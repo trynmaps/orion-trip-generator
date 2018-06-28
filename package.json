@@ -1,0 +1,23 @@
+{
+  "name": "orion-trip-generator",
+  "version": "1.0.0",
+  "description": "Creates trip data from raw transit data and sends it to S3",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EddyIonescu/orion-trip-generator.git"
+  },
+  "author": "Hunter",
+  "bugs": {
+    "url": "https://github.com/EddyIonescu/orion-trip-generator/issues"
+  },
+  "homepage": "https://github.com/EddyIonescu/orion-trip-generator#readme",
+  "dependencies": {
+    "aws-sdk": "2.257.1",
+    "sqs-consumer": "3.8.0"
+  }
+}

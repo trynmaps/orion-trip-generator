@@ -1,0 +1,5 @@
+  {
+  "stateBucket": "trip-state",
+  "stateFile": "muni-trip-state.json",
+  "vehicleBucket": "muni-nextbus-bucket"
+}
