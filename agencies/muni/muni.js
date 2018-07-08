@@ -61,6 +61,7 @@ const writeTrips = (trips) => {
     return results;
   }).catch((err) => {
     console.log("Error writing trip files", err)
+    throw err;
   })
 }
 
