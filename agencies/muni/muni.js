@@ -3,12 +3,12 @@ const muniConfig = require('./muniConfig');
 
 const updateTripState = (existingTrips, newTrips) => {
   return new Promise((resolve, reject) => {
-    if (!existingTrips || existingTrips === undefined || existingTrips.length === 0) {
-      resolve([newTrips, [], []]);
+    if (!newTrips || newTrips === undefined) {
+      newTrips = [];
     }
 
-    if (!newTrips || newTrips === undefined || newTrips.length === 0) {
-      resolve([[], existingTrips, []])
+    if (!existingTrips || existingTrips === undefined || existingTrips.length === 0) {
+      resolve([newTrips, [], []]);
     }
 
     const reducer = (acc, cur) => {
