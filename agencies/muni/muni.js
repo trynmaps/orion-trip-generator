@@ -15,7 +15,6 @@ const updateTripState = (existingTrips, newTrips) => {
       const index = newTrips.findIndex((n) => { return n.vid === cur.vid && n.route === cur.route && n.direction === cur.direction })
       //should never be more than one match
       if (index != -1) {
-        console.log(JSON.stringify(cur, null, 2))
         const matchingTrip = newTrips[index]
         for (let i = 0; i < matchingTrip.states.length; ++i) {
           cur.states.push({
