@@ -14,7 +14,6 @@ const app = sqsConsumer.create({
           const newTrips = result[0];
           const updatedTrips = result[1];
           const endedTrips = result[2];
-          console.log(endedTrips.length)
           muni.writeTrips(endedTrips).then((result) => {
             console.log("Wrote", endedTrips.length, "new trips")
             console.log("Write status is", result)
