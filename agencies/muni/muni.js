@@ -114,7 +114,7 @@ const getVehicleDataAsTrips = (bucket, key) => {
 
           if (keys.length === 0) {
             console.log("Could not find any vehicle data files in bucket s3://" + muniConfig.vehicleBucket)
-            return [];
+            resolve([]);
           }
 
           const mostRecentFile = keys[0].Key;
