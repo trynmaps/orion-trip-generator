@@ -10,7 +10,8 @@ const app = sqsConsumer.create({
     messageDetail.Records.map((record) => {
       console.log("New vehicle file published in bucket", record.s3.bucket.name, "key", record.s3.object.key)
       muni.getVehicleDataAsTrips(record.s3.bucket.name, record.s3.object.key).then((newTrips) => {
-        muni.updateTripState(app.trips, newTrips).then((result) => {
+        let vehicleFileTS = Number(record.s3.object.key.split("_")[1].split(".")[0])
+        muni.updateTripState(app.trips, newTrips, vehicleFileTS).then((result) => {
           const newTrips = result[0];
           const updatedTrips = result[1];
           const endedTrips = result[2];

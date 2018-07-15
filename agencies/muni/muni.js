@@ -1,18 +1,18 @@
 const awsHelper = require('../../awsHelper')
 const muniConfig = require('./muniConfig');
 
-const updateTripState = (existingTrips, newTrips) => {
+const updateTripState = (existingTrips, newTrips, newTripVehicleFileTS) => {
   return new Promise((resolve, reject) => {
-    if (!newTrips || newTrips === undefined) {
-      newTrips = [];
-    }
+    newTrips = newTrips || []
 
-    if (!existingTrips || existingTrips === undefined || existingTrips.length === 0) {
+    if (existingTrips.length === 0) {
       resolve([newTrips, [], []]);
     }
 
     const reducer = (acc, cur) => {
-      const index = newTrips.findIndex((n) => { return n.vid === cur.vid && n.route === cur.route && n.direction === cur.direction })
+      const index = newTrips.findIndex((n) => { 
+        return n.vid === cur.vid && n.route === cur.route && n.direction === cur.direction
+      })
       //should never be more than one match
       if (index != -1) {
         const matchingTrip = newTrips[index]
@@ -29,7 +29,7 @@ const updateTripState = (existingTrips, newTrips) => {
         newTrips.splice(index, 1);
       }
       else {
-        cur.endTime = Date.now()
+        cur.endTime = newTripVehicleFileTS
         acc.endedTrips.push(cur);
       }
 
@@ -65,8 +65,7 @@ const writeTrips = (trips) => {
   })
 }
 
-const transformVehicleToTrip = (vehicle) => {
-  const tripStartTime = Date.now()
+const transformVehicleToTrip = (vehicle, tripStartTime) => {
   return {
     agency: "muni",
     startTime: tripStartTime,
@@ -89,7 +88,8 @@ const getVehicleDataAsTrips = (bucket, key) => {
         const vehicleData = JSON.parse(result)
         console.log("Loading trips from most recent muni trip file at s3://" +
           bucket + "/" + key);
-        resolve(vehicleData.map(transformVehicleToTrip));
+        let vehicleFileTS = Number(key.split("_")[1].split(".")[0])
+        resolve(vehicleData.map(((vehicle) => transformVehicleToTrip(vehicle, vehicleFileTS))));
       }).catch((err) => {
         reject(err)
       });
@@ -123,7 +123,8 @@ const getVehicleDataAsTrips = (bucket, key) => {
             const vehicleData = JSON.parse(result)
             console.log("Loading trips from most recent muni trip file at s3://" +
               muniConfig.vehicleBucket + "/" + mostRecentFile);
-            resolve(vehicleData.map(transformVehicleToTrip));
+            let vehicleFileTS = Number(mostRecentFile.split("_")[1].split(".")[0])
+            resolve(vehicleData.map(((vehicle) => transformVehicleToTrip(vehicle, vehicleFileTS))));
           }).catch((err) => {
             reject(err)
           });
