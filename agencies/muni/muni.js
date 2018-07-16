@@ -1,5 +1,36 @@
 const awsHelper = require('../../awsHelper')
 const muniConfig = require('./muniConfig');
+let trips = []
+
+const updateTrips = () => {
+  return new Promise((resolve, reject) => {
+    if (trips.length === 0) {
+      awsHelper.readTextS3(muniConfig.stateBucket, muniConfig.stateFile).then((data) => {
+        //first try to load state file
+        console.log("Loaded trip state from s3://" + muniConfig.stateBucket + "/" + muniConfig.stateFile)
+        jsonData = JSON.parse(data)
+        const trips = jsonData.trips;
+        const lastVehicleFileProcessed = jsonData.lastFileProcessed;
+        resolve({trips: trips, lastFileProcessed: lastVehicleFileProcessed})
+      }).catch((err) => {
+        //no trip state file found
+        findEarliestVehcileFile().then((result) => {
+          resolve({trip: [], lastFileProcessed: result})
+        })
+      });
+    }
+    else {
+      return 2
+    }
+
+    // resolve(trips)
+  });
+}
+
+const findEarliestVehcileFile = () => {
+  return awsHelper.listBucket(
+    { Bucket: muniConfig.vehicleBucket, Prefix: muniConfig.agencyKey })
+}
 
 const updateTripState = (existingTrips, newTrips, newTripVehicleFileTS) => {
   return new Promise((resolve, reject) => {
@@ -145,25 +176,14 @@ const initTripState = () => {
   return awsHelper.readTextS3(muniConfig.stateBucket, muniConfig.stateFile).then((data) => {
     //first try to load state file
     console.log("Loaded trip state from s3://" + muniConfig.stateBucket + "/" + muniConfig.stateFile)
-    return JSON.parse(data);
+    jsonData = JSON.parse(data)
+    const trips = jsonData.trips;
+    const lastVehicleFileProcessed = jsonData.lastFileProcessed;
+    return {trips: trips, lastFileProcessed: lastVehicleFileProcessed}
   }).catch((err) => {
-    //next try to get trips from latest muni vehicle data file
-    return getVehicleDataAsTrips().then((trips) => {
-      //create the state file
-      return writeTripStateFile(trips).then((result) => {
-        console.log("Uploaded state file to s3", result.status);
-        return JSON.parse(result.data);
-      }).catch((err) => {
-        console.log("Error uploaded state file to s3", err);
-      })
-    });
+    //no trip state file found
+    return {trip: [], lastFileProcessed: null}
   });
 }
 
-module.exports = {
-  initTripState: initTripState,
-  getVehicleDataAsTrips: getVehicleDataAsTrips,
-  writeTrips: writeTrips,
-  updateTripState: updateTripState,
-  writeTripStateFile: writeTripStateFile
-}
+module.exports = updateTrips

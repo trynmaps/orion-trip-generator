@@ -1,7 +1,8 @@
   {
   "stateBucket": "trip-state",
   "stateFile": "muni-trip-state.json",
-  "vehicleBucket": "muni-nextbus-bucket",
-  "tripBucket": "muni-trips-dev-2",
+  "vehicleBucket": "vehicle-file-dev",
+  "agencyKey": "muni",
+  "tripBucket": "muni-trips-dev-3",
   "timezone": "US/Pacific"
 }

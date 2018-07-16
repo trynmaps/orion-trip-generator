@@ -17,7 +17,6 @@
   },
   "homepage": "https://github.com/EddyIonescu/orion-trip-generator#readme",
   "dependencies": {
-    "aws-sdk": "2.257.1",
-    "sqs-consumer": "3.8.0"
+    "aws-sdk": "2.257.1"
   }
 }
