@@ -1,6 +1,7 @@
 const awsHelper = require('../../awsHelper')
 const muniConfig = require('./muniConfig');
 let trips = []
+let lastVehicleFileProcessed = null
 
 const updateTrips = () => {
   return new Promise((resolve, reject) => {
@@ -9,18 +10,42 @@ const updateTrips = () => {
         //first try to load state file
         console.log("Loaded trip state from s3://" + muniConfig.stateBucket + "/" + muniConfig.stateFile)
         jsonData = JSON.parse(data)
-        const trips = jsonData.trips;
-        const lastVehicleFileProcessed = jsonData.lastFileProcessed;
-        resolve({trips: trips, lastFileProcessed: lastVehicleFileProcessed})
+        trips = jsonData.trips;
+        console.log(jsonData)
+        lastVehicleFileProcessed = jsonData.latestVehicleDataFile.file;
+        console.log("Loading", trips.length, "trips into memory from state file")
+        console.log("Last vehicle file processed was", lastVehicleFileProcessed)
+        resolve(trips)
       }).catch((err) => {
-        //no trip state file found
-        findEarliestVehcileFile().then((result) => {
-          resolve({trip: [], lastFileProcessed: result})
+        getLatestVehicleFile().then((latestFileKey) => {
+          getVehicleDataAsTrips(muniConfig.vehicleBucket, latestFileKey).then((ltrips) => {
+            writeTripStateFile(muniConfig.vehicleBucket, latestFileKey, ltrips).then(() => {
+              console.log("Wrote", ltrips.length, "trips to state file s3://" + 
+                muniConfig.stateBucket + "/" + muniConfig.stateFile)
+              trips = ltrips
+              lastVehicleFileProcessed = latestFileKey
+              resolve(trips)
+            }).catch((err) => {
+              console.log("Error writing trips to state file", err)
+              reject(err)
+            })
+          }).catch((err) => {
+            console.log("Error loading vehicle data from file s3://" + muniConfig.vehicleBucket + "/" + latestFileKey)
+            reject(err)
+          })
+        }).catch((err) => {
+          console.log("Error finding latest vehicle file from s3")
+          reject(err)
         })
       });
     }
     else {
-      return 2
+      readFilesAfter(lastVehicleFileProcessed).then((sortedFiles) => {
+        //read each file and update state file after processing it
+
+      })
+
+      resolve("Trips in memory is" + trips.length)
     }
 
     // resolve(trips)
@@ -41,7 +66,7 @@ const updateTripState = (existingTrips, newTrips, newTripVehicleFileTS) => {
     }
 
     const reducer = (acc, cur) => {
-      const index = newTrips.findIndex((n) => { 
+      const index = newTrips.findIndex((n) => {
         return n.vid === cur.vid && n.route === cur.route && n.direction === cur.direction
       })
       //should never be more than one match
@@ -98,7 +123,7 @@ const writeTrips = (trips) => {
 
 const transformVehicleToTrip = (vehicle, tripStartTime) => {
   return {
-    agency: "muni",
+    agency: muniConfig.agencyKey,
     startTime: tripStartTime,
     endTime: null,
     route: vehicle.routeId,
@@ -110,6 +135,37 @@ const transformVehicleToTrip = (vehicle, tripStartTime) => {
       lon: vehicle.lon
     }]
   }
+}
+
+const getLatestVehicleFile = () => {
+  return new Promise((resolve, reject) => {
+    awsHelper.listBucket(
+      { Bucket: muniConfig.vehicleBucket, Prefix: muniConfig.agencyKey }).then((objects) => {
+        if (objects.length === 0) {
+          resolve(null)
+        }
+        else {
+          const sortFn = (a, b) => {
+            const lengthA = a.split("/").length
+            const lengthB = b.split("/").length
+  
+            let tsA = Number(a.split("/")[lengthA - 1].split("_")[1].split(".")[0])
+            let tsB = Number(b.split("/")[lengthB - 1].split("_")[1].split(".")[0])
+  
+            if (tsA > tsB) {
+              return -1;
+            }
+            else {
+              return 1;
+            }
+  
+            return 0;
+          }
+  
+          resolve(objects.map(o=>o.Key).filter(o=>o.endsWith(".json")).sort(sortFn)[0])
+        }
+      });
+  })
 }
 
 const getVehicleDataAsTrips = (bucket, key) => {
@@ -126,47 +182,14 @@ const getVehicleDataAsTrips = (bucket, key) => {
       });
     }
     else {
-      awsHelper.listBucket(
-        { Bucket: muniConfig.vehicleBucket, Prefix: "muni-nextbus-bucket_" }).then((result) => {
-          let sortFn = (a, b) => {
-            let tsA = Number(a.Key.split("_")[1].split(".")[0])
-            let tsB = Number(b.Key.split("_")[1].split(".")[0])
-
-            if (tsA > tsB) {
-              return -1;
-            }
-            else {
-              return 1;
-            }
-
-            return 0;
-          }
-
-          const keys = result.sort(sortFn);
-
-          if (keys.length === 0) {
-            console.log("Could not find any vehicle data files in bucket s3://" + muniConfig.vehicleBucket)
-            resolve([]);
-          }
-
-          const mostRecentFile = keys[0].Key;
-          awsHelper.readTextS3(muniConfig.vehicleBucket, mostRecentFile).then((result) => {
-            const vehicleData = JSON.parse(result)
-            console.log("Loading trips from most recent muni trip file at s3://" +
-              muniConfig.vehicleBucket + "/" + mostRecentFile);
-            let vehicleFileTS = Number(mostRecentFile.split("_")[1].split(".")[0])
-            resolve(vehicleData.map(((vehicle) => transformVehicleToTrip(vehicle, vehicleFileTS))));
-          }).catch((err) => {
-            reject(err)
-          });
-        });
+      resolve(null)
     }
   });
 }
 
-const writeTripStateFile = (trips) => {
+const writeTripStateFile = (vehicleBucket, latestVehicleFile, trips) => {
   return awsHelper.putFileToBucket({
-    Body: JSON.stringify(trips),
+    Body: JSON.stringify({latestVehicleDataFile: {bucket: vehicleBucket, file: latestVehicleFile}, trips: trips}),
     Bucket: muniConfig.stateBucket,
     Key: muniConfig.stateFile
   })
@@ -179,10 +202,10 @@ const initTripState = () => {
     jsonData = JSON.parse(data)
     const trips = jsonData.trips;
     const lastVehicleFileProcessed = jsonData.lastFileProcessed;
-    return {trips: trips, lastFileProcessed: lastVehicleFileProcessed}
+    return { trips: trips, lastFileProcessed: lastVehicleFileProcessed }
   }).catch((err) => {
     //no trip state file found
-    return {trip: [], lastFileProcessed: null}
+    return { trip: [], lastFileProcessed: null }
   });
 }
 
