@@ -17,12 +17,13 @@ const updateTrips = () => {
         console.log("Last vehicle file processed was", lastVehicleFileProcessed)
         resolve(trips)
       }).catch((err) => {
+        //no state file exists
         getLatestVehicleFile().then((latestFileKey) => {
-          getVehicleDataAsTrips(muniConfig.vehicleBucket, latestFileKey).then((ltrips) => {
-            writeTripStateFile(muniConfig.vehicleBucket, latestFileKey, ltrips).then(() => {
-              console.log("Wrote", ltrips.length, "trips to state file s3://" + 
+          getVehicleDataAsTrips(muniConfig.vehicleBucket, latestFileKey).then((mostRecentTrips) => {
+            writeTripStateFile(muniConfig.vehicleBucket, latestFileKey, mostRecentTrips).then(() => {
+              console.log("Wrote", mostRecentTrips.length, "trips to state file s3://" + 
                 muniConfig.stateBucket + "/" + muniConfig.stateFile)
-              trips = ltrips
+              trips = mostRecentTrips
               lastVehicleFileProcessed = latestFileKey
               resolve(trips)
             }).catch((err) => {
@@ -34,28 +35,54 @@ const updateTrips = () => {
             reject(err)
           })
         }).catch((err) => {
-          console.log("Error finding latest vehicle file from s3")
+          console.log("Error finding latest vehicle file in s3")
           reject(err)
         })
       });
     }
     else {
-      readFilesAfter(lastVehicleFileProcessed).then((sortedFiles) => {
-        //read each file and update state file after processing it
+      //trips in memory exist
+      console.log("last file processed", lastVehicleFileProcessed)
+      readFilesAfter(lastVehicleFileProcessed).then(async (sortedFileKeys) => {
+        console.log("files to process =", sortedFileKeys)       
+        Promise.all(sortedFileKeys.map(async (fileKey) => {
+          console.log("processing file", fileKey)
+          const data = await awsHelper.readTextS3(muniConfig.vehicleBucket, fileKey)
+          //console.log(data)
+          return data
+        })).then((results) => {
+          results.map((result) => {
+            console.log("r", result)
+          })
+        })
 
+        resolve("Processed " + sortedFileKeys.length + " vehicle files from s3 bucket " + muniConfig.vehicleBucket)
+      }).catch((err) => {
+        console.log(err)
       })
-
-      resolve("Trips in memory is" + trips.length)
     }
-
-    // resolve(trips)
-  });
+ });
 }
 
-const findEarliestVehcileFile = () => {
-  return awsHelper.listBucket(
-    { Bucket: muniConfig.vehicleBucket, Prefix: muniConfig.agencyKey })
-}
+
+          // awsHelper.readTextS3(muniConfig.vehicleBucket, fileKey).then((result) => {
+          //   const currentFileTrips = JSON.parse(result)
+
+          //   // const state = trips.reduce(reducer, { updatedExistingTrips: [], endedTrips: [] })
+
+          //   // //write new trips
+          //   // writeTrips(state.endedTrips)
+
+          //   // //update state to reflect the file that was processed
+          //   // trips = state.updatedExistingTrips
+          //   console.log("Processed vehcile file s3://" + 
+          //     muniConfig.vehicleBucket + fileKey + " updating 1 trips and writing 2 new trips")
+
+          //   return await "Updated 3 trips"
+          // }).catch((err) => {
+          //   console.log("Error processing vehcile file s3://" + 
+          //     muniConfig.vehicleBucket + fileKey + " : ", err)
+          // })
 
 const updateTripState = (existingTrips, newTrips, newTripVehicleFileTS) => {
   return new Promise((resolve, reject) => {
@@ -98,21 +125,61 @@ const updateTripState = (existingTrips, newTrips, newTripVehicleFileTS) => {
   })
 }
 
+const readFilesAfter = (fileKey) => {
+  return new Promise((resolve, reject) => {
+    const length = fileKey.split("/").length
+    const timestamp = Number(fileKey.split("/")[length - 1].split("_")[1].split(".")[0])
+    awsHelper.listBucket(
+      { Bucket: muniConfig.vehicleBucket, Prefix: muniConfig.agencyKey }).then((objects) => {
+        if (objects.length === 0) {
+          resolve(null)
+        }
+        else {
+          const sortFn = (a, b) => {
+            const lengthA = a.split("/").length
+            const lengthB = b.split("/").length
+  
+            let tsA = Number(a.split("/")[lengthA - 1].split("_")[1].split(".")[0])
+            let tsB = Number(b.split("/")[lengthB - 1].split("_")[1].split(".")[0])
+  
+            //asc order
+            if (tsA < tsB) {
+              return -1;
+            }
+            else {
+              return 1;
+            }
+  
+            return 0;
+          }
+  
+          resolve(objects.map(o=>o.Key).filter(o=>o.endsWith(".json")).sort(sortFn).filter(
+            (thisFileKey) => {
+              const l = thisFileKey.split("/").length
+              const thists = Number(thisFileKey.split("/")[l - 1].split("_")[1].split(".")[0])
+              return (thists > timestamp)              
+            }
+          ))
+        }
+      });
+  })
+}
+
 const writeTrips = (trips) => {
   let promises = [];
 
-  for (let i = 0; i < trips.length; ++i) {
+  trips.map((trip) => {
     promises.push(awsHelper.putFileToBucket({
       Body: JSON.stringify(trips[i]),
       Bucket: muniConfig.tripBucket,
       Key: `muni-${trips[i].vid}_${trips[i].route}_${trips[i].direction}-${trips[i].startTime}-${trips[i].endTime}.json`
-    }))
-  }
+    }))    
+  })
 
   return Promise.all(promises).then((results) => {
-    for (let i = 0; i < results.length; ++i) {
-      console.log("Uploaded state file to s3", results[i].status);
-    }
+    results.map((result) => {
+      console.log("Uploaded state file to s3", result.status);
+    })
 
     return results;
   }).catch((err) => {

@@ -40,6 +40,20 @@ module.exports = {
             listAllKeys();
         });
     },
+    readTextS3Extended: async function (bucket, key) {
+        return await new Promise((resolve, reject) => {
+            let params = { Bucket: bucket, Key: key };
+
+            s3.getObject(params, function (err, data) {
+                if (err) {
+                    reject(err);
+                }
+                else {
+                    resolve({data: data.Body.toString(), bucket: bucket, key: key});
+                }
+            });
+        });
+    },
     readTextS3: async function (bucket, key) {
         return await new Promise((resolve, reject) => {
             let params = { Bucket: bucket, Key: key };
@@ -53,5 +67,5 @@ module.exports = {
                 }
             });
         });
-    }
+    }    
 }
