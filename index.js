@@ -1,6 +1,6 @@
 const muni = require('./agencies/muni/muni');
 
-setInterval(updateTrips, 2000);
+setInterval(updateTrips, 5000);
 //setTimeout(updateTrips, 1000);
 
 function updateTrips() {
