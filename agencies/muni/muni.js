@@ -41,41 +41,32 @@ const updateTrips = () => {
     }
     else {
       //trips in memory exist
-
-      console.log("last file processed", lastVehicleFileProcessed)
       readFilesAfter(lastVehicleFileProcessed).then(async (sortedFileKeys) => {
         console.log("files to process =", sortedFileKeys)       
         Promise.all(sortedFileKeys.map(async (fileKey) => {
-          console.log("processing file", fileKey)
+          console.log("Processing file", fileKey)
           const data = await getVehicleDataAsTrips(muniConfig.vehicleBucket, fileKey)
 
           const length = fileKey.split("/").length
           const timestamp = Number(fileKey.split("/")[length - 1].split("_")[1].split(".")[0])
-
           return {data: data, timestamp: timestamp, fileKey: fileKey}
         })).then((results) => {
           //results is all new vehicle file data (files after last vehicle file processed) in ascending date order
-          results.map((newTripInfo) => {
-            newTrips = newTripInfo.data
-            newTripsTimestamp = newTripInfo.timestamp
-            fileKey = newTripInfo.fileKey
+          results.map((newVehicleFileInfo) => {
+            newVehicleInfo = newVehicleFileInfo.data
+            newVehicleTimestamp = newVehicleFileInfo.timestamp
+            fileKey = newVehicleFileInfo.fileKey
 
             const reducer = (acc, cur) => {
-              let index = acc.updatedExistingTrips.findIndex((n) => {
-                return n.vid === cur.vid && n.route === cur.route && n.direction === cur.direction
-              })
-
-              //couldn't find a trip that was updated by reducer
-              //so search the trips from the last vehicle file processed
-              if (index == -1) {
-                index = newTrips.findIndex((n) => {
+              const index = newVehicleInfo.findIndex((n) => {
                   return n.vid === cur.vid && n.route === cur.route && n.direction === cur.direction
-                })
-              }
+              })
 
               //should never be more than one match              
               if (index != -1) {
-                const matchingTrip = newTrips[index]
+                //an existing trips matched a trip in the
+                //new vehicle file being processed
+                const matchingTrip = newVehicleInfo[index]
 
                 let updatedExistingTrip = {
                   agency: matchingTrip.agency,
@@ -95,9 +86,11 @@ const updateTrips = () => {
                   })                  
                 })
                 
-                acc.updatedExistingTrips.push(updatedExistingTrip)
+                acc.existingTrips.push(updatedExistingTrip)
               }
               else {
+                //trip in memory has ended (has no match
+                // in the current vehcile file being processed)
                 acc.endedTrips.push({
                   agency: cur.agency,
                   startTime: cur.startTime,
@@ -105,66 +98,44 @@ const updateTrips = () => {
                   vid: cur.vid,
                   route: cur.route,
                   direction: cur.direction,
-                  endTime: newTripsTimestamp,
+                  endTime: newVehicleTimestamp,
                   states: cur.states
                 });
-
-                //acc.updatedExistingTrips
-
               }
         
               return acc;
             };
 
-            const tripsAsString = JSON.stringify(trips)
-            const state = trips.reduce(reducer, { existingTrips: JSON.parse(tripsAsString), endedTrips: [] })
+            const state = trips.reduce(reducer, { existingTrips: [], endedTrips: [] })
+            const newTrips = newVehicleInfo.filter((newVehicle) => {
+              return trips.map((currentTrip) => {
+                newVehicle.vid === currentTrip.vid && 
+                  newVehicle.route === currentTrip.route && 
+                    newVehicle.direction === currentTrip.direction
+              }).length == 0
+            })
 
-            //write new trips
-            writeTrips(state.endedTrips)
-
+            //write new trips and updated state file
+            //writeTrips(state.endedTrips)
+            console.log("ENDED TRIPS:", JSON.stringify(state.endedTrips))
             //update state to reflect the file that was processed
-            trips = state.updatedExistingTrips
+            trips = state.existingTrips.concat(newTrips)
+            //writeTripStateFile(muniConfig.stateBucket, fileKey, trips)
+
             console.log("Processed vehicle file s3://" + 
-              muniConfig.vehicleBucket + fileKey + " updating 1 trips and writing 2 new trips")
+              muniConfig.vehicleBucket + fileKey + " updating", state.existingTrips.length,
+               "trips and writing", state.endedTrips.length, "new trips")
 
             return "Updated XX trips"
           })
-
-
         })
-
         resolve("Processed " + sortedFileKeys.length + " vehicle files from s3 bucket " + muniConfig.vehicleBucket)
       }).catch((err) => {
         console.log(err)
       })
-
-
-
-
-
     }
  });
 }
-
-
-          // awsHelper.readTextS3(muniConfig.vehicleBucket, fileKey).then((result) => {
-          //   const currentFileTrips = JSON.parse(result)
-
-          //   // const state = trips.reduce(reducer, { updatedExistingTrips: [], endedTrips: [] })
-
-          //   // //write new trips
-          //   // writeTrips(state.endedTrips)
-
-          //   // //update state to reflect the file that was processed
-          //   // trips = state.updatedExistingTrips
-          //   console.log("Processed vehcile file s3://" + 
-          //     muniConfig.vehicleBucket + fileKey + " updating 1 trips and writing 2 new trips")
-
-          //   return await "Updated 3 trips"
-          // }).catch((err) => {
-          //   console.log("Error processing vehcile file s3://" + 
-          //     muniConfig.vehicleBucket + fileKey + " : ", err)
-          // })
 
 const updateTripState = (existingTrips, newTrips, newTripVehicleFileTS) => {
   return new Promise((resolve, reject) => {
@@ -254,7 +225,7 @@ const writeTrips = (trips) => {
     promises.push(awsHelper.putFileToBucket({
       Body: JSON.stringify(trip),
       Bucket: muniConfig.tripBucket,
-      Key: `muni-${trips.vid}_${trips.route}_${trips.direction}-${trips.startTime}-${trips.endTime}.json`
+      Key: `muni-${trip.vid}_${trip.route}_${trip.direction}-${trip.startTime}-${trip.endTime}.json`
     }))    
   })
 
