@@ -4,14 +4,16 @@ const s3 = new AWS.S3();
 //AWS.config.loadFromPath('./aws-config.json');
 
 module.exports = {
-    putFileToBucket: async function (parms) {
+    putFileToBucket: async function (params) {
         return await new Promise((resolve, reject) => {
             s3.putObject(params, function (err, data) {
                 if (err) {
                     reject(err);
                 }
                 else {
-                    resolve(data);
+                    resolve({
+                        status: data,
+                        data: params.Body});
                 }
             });
         });
